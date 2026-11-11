@@ -1,7 +1,9 @@
 package ticketya.pasarela_mock.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 
+@Schema(description = "Solicitud de reembolso")
 public class ReembolsoRequest {
     private String transaccionId;
     private BigDecimal monto;

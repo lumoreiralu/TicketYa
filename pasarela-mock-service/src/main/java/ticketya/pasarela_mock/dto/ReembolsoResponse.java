@@ -1,5 +1,8 @@
 package ticketya.pasarela_mock.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "Respuesta de reembolso")
 public class ReembolsoResponse {
     private String reembolsoId;
     private String estado;

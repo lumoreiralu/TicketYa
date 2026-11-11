@@ -1,10 +1,12 @@
 package ticketya.compras_service.client;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
+@Schema(description = "Respuesta de emisión de entradas")
 public record EmisionResponse(String ordenCompraId, List<EntradaDTO> entradas) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)

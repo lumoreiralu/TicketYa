@@ -1,6 +1,7 @@
 package ticketya.eventos_service.model;
 
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.List;
 
 @Data
+@Schema(description = "Lugar / recinto")
 @Document(collection = "lugares")
 public class Lugar {
     @Id

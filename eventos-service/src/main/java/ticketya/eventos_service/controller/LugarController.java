@@ -4,6 +4,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import ticketya.eventos_service.model.Lugar;
 import ticketya.eventos_service.model.TipoSector;
 import ticketya.eventos_service.repository.LugarRepository;
@@ -12,12 +18,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@Tag(name = "Lugares", description = "Gestión de recintos y sectores")
 @RestController
 @RequestMapping("/api/lugares")
 public class LugarController {
     @Autowired
     private LugarRepository lugarRepository;
 
+    @Operation(summary = "Crear lugar", description = "Registra un recinto con sus sectores numerados o de capacidad general")
+    @ApiResponses({@ApiResponse(responseCode = "201", description = "Lugar creado"), @ApiResponse(responseCode = "400", description = "Datos inválidos")})
     @PostMapping
     public ResponseEntity<?> crearLugar(@RequestBody Lugar lugar){
         if (lugar.getNombre() == null || lugar.getNombre().isBlank()) {
@@ -33,11 +42,15 @@ public class LugarController {
         return new ResponseEntity<>(nuevoLugar, HttpStatus.CREATED);
     }
 
+    @Operation(summary = "Listar lugares", description = "Lista todos los lugares registrados")
+    @ApiResponse(responseCode = "200", description = "Lista de lugares")
     @GetMapping
     public ResponseEntity<List<Lugar>> obtenerLugares(){
         return new ResponseEntity<>(lugarRepository.findAll(), HttpStatus.OK);
     }
 
+    @Operation(summary = "Obtener lugar por ID", description = "Obtiene un lugar por su ID")
+    @ApiResponses({@ApiResponse(responseCode = "200", description = "Lugar encontrado"), @ApiResponse(responseCode = "404", description = "No encontrado")})
     @GetMapping("/{id}")
     public ResponseEntity<Lugar> obtenerLugarPorId(@PathVariable String id){
         return lugarRepository.findById(id)
@@ -45,6 +58,8 @@ public class LugarController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Agregar sector", description = "Agrega un sector a un lugar existente")
+    @ApiResponses({@ApiResponse(responseCode = "200", description = "Sector agregado"), @ApiResponse(responseCode = "400", description = "Datos inválidos"), @ApiResponse(responseCode = "404", description = "Lugar no encontrado")})
     @PostMapping("/{id}/sectores")
     public ResponseEntity<?> agregarSector(@PathVariable String id, @RequestBody Lugar.Sector nuevoSector) {
         var opt = lugarRepository.findById(id);

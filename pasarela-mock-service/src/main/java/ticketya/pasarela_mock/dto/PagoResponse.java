@@ -1,5 +1,8 @@
 package ticketya.pasarela_mock.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "Respuesta de la pasarela de pago")
 public class PagoResponse {
 
     private String transaccionId;

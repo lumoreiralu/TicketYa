@@ -6,6 +6,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.server.ResponseStatusException;
 import ticketya.eventos_service.model.EstadoEvento;
 import ticketya.eventos_service.model.Evento;
@@ -19,6 +24,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+@Tag(name = "Eventos", description = "Gestión de eventos y catálogo")
 @RestController
 @RequestMapping("/api/eventos")
 public class EventoController {
@@ -31,6 +37,8 @@ public class EventoController {
     @Autowired
     private EventoBusquedaService busquedaService;
 
+    @Operation(summary = "Crear evento", description = "Crea un evento en estado BORRADOR")
+    @ApiResponses({@ApiResponse(responseCode = "201", description = "Evento creado")})
     @PostMapping
     public ResponseEntity<Evento> crearEvento(@RequestBody Evento evento) {
         evento.setEstado(EstadoEvento.BORRADOR);
@@ -39,6 +47,8 @@ public class EventoController {
         return new ResponseEntity<>(nuevoEvento, HttpStatus.CREATED);
     }
 
+    @Operation(summary = "Listar eventos", description = "Lista todos los eventos, incluidos los borradores")
+    @ApiResponse(responseCode = "200", description = "Lista de eventos")
     @GetMapping
     public ResponseEntity<List<Evento>> obtenerEventos() {
         List<Evento> eventos = eventoRepository.findAll();
@@ -46,6 +56,8 @@ public class EventoController {
         return new ResponseEntity<>(eventos, HttpStatus.OK);
     }
 
+    @Operation(summary = "Obtener evento por ID", description = "Obtiene un evento por su ID")
+    @ApiResponses({@ApiResponse(responseCode = "200", description = "Evento encontrado"), @ApiResponse(responseCode = "404", description = "No encontrado")})
     @GetMapping("/{id}")
     public ResponseEntity<Evento> obtenerEventoPorId(@PathVariable String id) {
         return eventoRepository.findById(id)
@@ -56,6 +68,8 @@ public class EventoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Listar eventos publicados", description = "Lista eventos en estado PUBLICADO")
+    @ApiResponse(responseCode = "200", description = "Lista de eventos publicados")
     @GetMapping("/publicados")
     public ResponseEntity<List<Evento>> obtenerEventosPublicados() {
         List<Evento> publicados = eventoRepository.findByEstado(EstadoEvento.PUBLICADO);
@@ -63,6 +77,8 @@ public class EventoController {
         return ResponseEntity.ok(publicados);
     }
 
+    @Operation(summary = "Buscar eventos", description = "Busca eventos publicados por filtros (tipo, organizador, artista, ciudad, rango de fechas)")
+    @ApiResponse(responseCode = "200", description = "Resultados de búsqueda")
     @GetMapping("/buscar")
     public ResponseEntity<List<Evento>> buscarEventos(
             @RequestParam(required = false) TipoEvento tipo,
@@ -76,6 +92,8 @@ public class EventoController {
         return ResponseEntity.ok(resultado);
     }
 
+    @Operation(summary = "Publicar evento", description = "Publica el evento si tiene precios válidos por sector")
+    @ApiResponses({@ApiResponse(responseCode = "200", description = "Evento publicado"), @ApiResponse(responseCode = "404", description = "No encontrado"), @ApiResponse(responseCode = "422", description = "Precios inválidos")})
     @PutMapping("/{id}/publicar")
     public ResponseEntity<?> publicarEvento(
             @PathVariable String id,
@@ -128,6 +146,8 @@ public class EventoController {
         }
     }
 
+    @Operation(summary = "Cancelar evento", description = "Cancela el evento y dispara el reintegro de sus entradas")
+    @ApiResponses({@ApiResponse(responseCode = "200", description = "Evento cancelado"), @ApiResponse(responseCode = "404", description = "No encontrado")})
     @PostMapping("/{id}/cancelar")
     public ResponseEntity<String> cancelarEvento(@PathVariable String id){
         //1. cambiar estado en MongoDB
