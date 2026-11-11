@@ -350,9 +350,15 @@ En Windows PowerShell podés usar `Invoke-RestMethod` o, más simple, ejecutar l
 Postman. Si usás `curl.exe`, tené en cuenta que las comillas y el escape de JSON cambian respecto
 de Bash.
 
-## Endpoints
+## Documentación OpenAPI (Swagger)
 
-Todas las rutas se consumen a través del gateway en `http://localhost:8080`.
+La especificación completa de la API está en [`docs/openapi.yaml`](docs/openapi.yaml), en formato OpenAPI 3.0.3. Incluye los endpoints del gateway, métodos, parámetros, esquemas, ejemplos de requests y responses, y códigos de error documentados según el comportamiento actual de cada servicio.
+
+Para explorarla con Swagger UI, abrí Swagger Editor/Swagger UI e importá `docs/openapi.yaml`. La UI no está embebida en los microservicios; el archivo YAML es la fuente de documentación versionada. La URL base configurada para probar las rutas es `http://localhost:8080`.
+
+## Endpoints (resumen)
+
+Todas las rutas se consumen a través del gateway en `http://localhost:8080`. El inventario completo, incluidos los endpoints internos, parámetros, modelos JSON, ejemplos y respuestas de error, está en [`docs/openapi.yaml`](docs/openapi.yaml). Las tablas siguientes son una guía rápida; consultá la especificación OpenAPI como referencia completa.
 
 ### Lugares
 

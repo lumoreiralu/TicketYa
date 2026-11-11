@@ -1,0 +1,1025 @@
+openapi: 3.0.3
+info:
+  title: TicketYa API
+  version: 1.0.0
+  description: >-
+    Especificación de los endpoints HTTP implementados por TicketYa. Las rutas se exponen
+    mediante el API Gateway. Los IDs se validan por cada servicio; no hay autenticación
+    configurada en esta versión. Los endpoints internos también aparecen porque el gateway
+    los enruta.
+  contact:
+    name: Equipo TicketYa
+servers:
+  - url: http://localhost:8080
+    description: API Gateway local
+tags:
+  - name: Lugares
+    description: Catálogo de lugares y sectores (eventos-service).
+  - name: Eventos
+    description: Creación, consulta, búsqueda, publicación y cancelación de eventos.
+  - name: Compras
+    description: Reservas temporales, confirmación de pago y consulta de órdenes.
+  - name: Entradas
+    description: Emisión, consulta, devolución y cancelación de entradas.
+  - name: Pagos
+    description: Simulador de pagos y reembolsos; no persiste transacciones.
+paths:
+  /api/lugares:
+    get:
+      tags: [Lugares]
+      summary: Listar lugares
+      description: Devuelve todos los lugares con sus sectores embebidos.
+      responses:
+        '200':
+          description: Lista de lugares (puede estar vacía).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Lugar'}
+              example:
+                - id: 65c112ab8e1d5d330948e001
+                  nombre: Estadio TicketYa
+                  direccion: Av. Principal 123
+                  ciudad: Montevideo
+                  ubicacion: {latitud: -34.9011, longitud: -56.1645}
+                  sectores:
+                    - sectorId: SEC-CAMPO
+                      nombre: Campo General
+                      tipo: CAPACIDAD_GENERAL
+                      capacidadMaxima: 5000
+                      filas: []
+    post:
+      tags: [Lugares]
+      summary: Crear lugar
+      description: Crea un lugar y valida el formato de los sectores numerados y generales.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LugarInput'}
+            example:
+              nombre: Estadio TicketYa
+              direccion: Av. Principal 123
+              ciudad: Montevideo
+              ubicacion: {latitud: -34.9011, longitud: -56.1645}
+              sectores:
+                - sectorId: SEC-PLATEA-A
+                  nombre: Platea Preferencial
+                  tipo: NUMERADO
+                  capacidadMaxima: 16
+                  filas: [{fila: '1', asientos: [1, 2, 3, 4]}]
+                - sectorId: SEC-CAMPO
+                  nombre: Campo General
+                  tipo: CAPACIDAD_GENERAL
+                  capacidadMaxima: 5000
+                  filas: []
+      responses:
+        '201':
+          description: Lugar creado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Lugar'}
+              example:
+                id: 65c112ab8e1d5d330948e001
+                nombre: Estadio TicketYa
+                direccion: Av. Principal 123
+                ciudad: Montevideo
+                ubicacion: {latitud: -34.9011, longitud: -56.1645}
+                sectores: []
+        '400':
+          description: Nombre requerido o sector inválido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MensajeError'}
+              examples:
+                nombre:
+                  value: {mensaje: El nombre del lugar es obligatorio}
+                sector:
+                  value: {mensaje: Cada sector debe especificar su tipo (NUMERADO o CAPACIDAD_GENERAL)}
+  /api/lugares/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdDocumento'
+    get:
+      tags: [Lugares]
+      summary: Obtener lugar
+      description: Busca un lugar por su identificador MongoDB.
+      responses:
+        '200':
+          description: Lugar encontrado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Lugar'}
+              example:
+                id: 65c112ab8e1d5d330948e001
+                nombre: Estadio TicketYa
+                direccion: Av. Principal 123
+                ciudad: Montevideo
+                sectores: []
+        '404': {$ref: '#/components/responses/NotFoundEmpty'}
+    post:
+      tags: [Lugares]
+      summary: Agregar sector a un lugar
+      description: Agrega un sector después de validar su tipo, capacidad o filas y asientos.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Sector'}
+            example:
+              sectorId: SEC-CAMPO
+              nombre: Campo General
+              tipo: CAPACIDAD_GENERAL
+              capacidadMaxima: 5000
+      responses:
+        '200':
+          description: Lugar actualizado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Lugar'}
+        '400':
+          description: Sector inválido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MensajeError'}
+              example: {mensaje: El sector general debe especificar una capacidad máxima mayor a cero}
+        '404': {$ref: '#/components/responses/NotFoundEmpty'}
+  /api/eventos:
+    get:
+      tags: [Eventos]
+      summary: Listar eventos
+      description: Devuelve todos los eventos, incluidos borradores; completa ciudad y resumen de sectores desde el lugar cuando corresponde.
+      responses:
+        '200':
+          description: Lista de eventos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Evento'}
+              example:
+                - id: 65c113ab8e1d5d330948e002
+                  nombre: Recital TicketYa Tour
+                  descripcion: Música en vivo
+                  tipoEvento: RECITAL
+                  organizadorId: ORG-101
+                  participantes: [Artista A]
+                  fechaHora: '2027-12-15T21:00:00'
+                  lugarId: 65c112ab8e1d5d330948e001
+                  ciudad: Montevideo
+                  estado: PUBLICADO
+                  preciosSectores: [{idSector: SEC-CAMPO, precio: 15000}]
+                  sectores: []
+    post:
+      tags: [Eventos]
+      summary: Crear evento
+      description: Crea un evento en estado BORRADOR. Si el lugar existe, completa ciudad y sectores en la respuesta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EventoInput'}
+            example:
+              nombre: Recital TicketYa Tour
+              descripcion: Música en vivo
+              tipoEvento: RECITAL
+              organizadorId: ORG-101
+              participantes: [Artista A, Banda B]
+              fechaHora: '2027-12-15T21:00:00'
+              lugarId: 65c112ab8e1d5d330948e001
+              ciudad: Montevideo
+              preciosSectores: [{idSector: SEC-CAMPO, precio: 15000}]
+      responses:
+        '201':
+          description: Evento creado como borrador.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Evento'}
+              example:
+                id: 65c113ab8e1d5d330948e002
+                nombre: Recital TicketYa Tour
+                tipoEvento: RECITAL
+                organizadorId: ORG-101
+                fechaHora: '2027-12-15T21:00:00'
+                lugarId: 65c112ab8e1d5d330948e001
+                estado: BORRADOR
+                preciosSectores: [{idSector: SEC-CAMPO, precio: 15000}]
+                sectores: []
+        '400':
+          description: JSON de entrada inválido o incompatible con el modelo.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/eventos/publicados:
+    get:
+      tags: [Eventos]
+      summary: Listar eventos publicados
+      description: Devuelve únicamente eventos cuyo estado es PUBLICADO.
+      responses:
+        '200':
+          description: Lista de eventos publicados.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Evento'}
+              example: []
+  /api/eventos/buscar:
+    get:
+      tags: [Eventos]
+      summary: Buscar eventos
+      description: Busca solo eventos PUBLICADO aplicando filtros opcionales de tipo, organizador, artista, ciudad y rango de fechas.
+      parameters:
+        - name: tipo
+          in: query
+          required: false
+          description: Tipo de evento.
+          schema: {type: string, enum: [RECITAL, TEATRO, DEPORTE, CONFERENCIA]}
+          example: RECITAL
+        - name: organizadorId
+          in: query
+          required: false
+          schema: {type: string}
+          example: ORG-101
+        - name: artista
+          in: query
+          required: false
+          description: Filtro textual sobre participantes.
+          schema: {type: string}
+          example: Artista
+        - name: ciudad
+          in: query
+          required: false
+          schema: {type: string}
+          example: Montevideo
+        - name: fechaDesde
+          in: query
+          required: false
+          description: Fecha inicial inclusive, formato YYYY-MM-DD.
+          schema: {type: string, format: date}
+          example: '2027-12-01'
+        - name: fechaHasta
+          in: query
+          required: false
+          description: Fecha final inclusive, formato YYYY-MM-DD.
+          schema: {type: string, format: date}
+          example: '2027-12-31'
+      responses:
+        '200':
+          description: Lista de eventos que coinciden con los filtros.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Evento'}
+              example: []
+        '400':
+          description: Parámetro enum o fecha con formato inválido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/eventos/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdDocumento'
+    get:
+      tags: [Eventos]
+      summary: Obtener evento
+      description: Busca un evento por su identificador MongoDB.
+      responses:
+        '200':
+          description: Evento encontrado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Evento'}
+              example:
+                id: 65c113ab8e1d5d330948e002
+                nombre: Recital TicketYa Tour
+                descripcion: Música en vivo
+                tipoEvento: RECITAL
+                organizadorId: ORG-101
+                participantes: [Artista A]
+                fechaHora: '2027-12-15T21:00:00'
+                lugarId: 65c112ab8e1d5d330948e001
+                ciudad: Montevideo
+                estado: PUBLICADO
+                preciosSectores: [{idSector: SEC-CAMPO, precio: 15000}]
+                sectores: []
+        '404': {$ref: '#/components/responses/NotFoundEmpty'}
+  /api/eventos/{id}/publicar:
+    parameters:
+      - $ref: '#/components/parameters/IdDocumento'
+    put:
+      tags: [Eventos]
+      summary: Publicar evento
+      description: Publica el evento si todos los precios por sector son mayores que cero. Si se envía un arreglo, reemplaza la lista de precios antes de validar.
+      requestBody:
+        required: false
+        description: Precios por sector opcionales. Si se omiten se usan los precios guardados.
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: '#/components/schemas/PrecioSector'}
+            example: [{idSector: SEC-CAMPO, precio: 15000}]
+      responses:
+        '200':
+          description: Evento publicado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Evento'}
+              example:
+                id: 65c113ab8e1d5d330948e002
+                nombre: Recital TicketYa Tour
+                tipoEvento: RECITAL
+                fechaHora: '2027-12-15T21:00:00'
+                estado: PUBLICADO
+                preciosSectores: [{idSector: SEC-CAMPO, precio: 15000}]
+                sectores: []
+        '404': {$ref: '#/components/responses/NotFoundEmpty'}
+        '422':
+          description: Faltan precios o alguno no es mayor que cero.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MensajeError'}
+              examples:
+                sinPrecios:
+                  value: {mensaje: 'No se puede publicar el evento: debe tener precios definidos por sector'}
+                precioInvalido:
+                  value: {mensaje: 'No se puede publicar el evento: todos los sectores deben tener un precio mayor a cero'}
+  /api/eventos/{id}/cancelar:
+    parameters:
+      - $ref: '#/components/parameters/IdDocumento'
+    post:
+      tags: [Eventos]
+      summary: Cancelar evento
+      description: Marca el evento como CANCELADO e intenta notificar a entradas-service para cancelar entradas. La respuesta exitosa no garantiza que el servicio remoto haya respondido.
+      responses:
+        '200':
+          description: Evento marcado como cancelado.
+          content:
+            text/plain:
+              schema: {type: string}
+              example: Evento cancelado y proceso de reintegros disparado
+        '404':
+          description: Evento no encontrado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/compras/reservar:
+    post:
+      tags: [Compras]
+      summary: Reservar entradas
+      description: Crea una orden temporal y bloquea asientos o cupos. El tiempo de reserva predeterminado es 10 minutos. La clave de idempotencia, si se repite, devuelve la orden existente.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Clave opcional única para hacer idempotente la creación de la reserva.
+          schema: {type: string, maxLength: 255}
+          example: demo-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReservaRequest'}
+            example:
+              clienteId: CLI-1234
+              eventoId: 65c113ab8e1d5d330948e002
+              items:
+                - {sectorId: SEC-PLATEA-A, fila: '1', asiento: 1}
+                - {sectorId: SEC-PLATEA-A, fila: '1', asiento: 2}
+      responses:
+        '201':
+          description: Orden reservada temporalmente.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReservaResponse'}
+              example:
+                ordenId: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+                estado: RESERVADA_TEMPORAL
+                expiraEn: '2027-12-15T21:10:00'
+                montoTotal: 60000.00
+                segundosRestantes: 600
+        '400':
+          description: Cliente, evento o items faltantes; sectorId faltante; o fila/asiento incompletos.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 400, mensaje: 'Hay que indicar clienteId, eventoId y al menos un item'}
+        '404':
+          description: Evento inexistente; se devuelve error de negocio.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 404, mensaje: El evento indicado no existe}
+        '409':
+          description: Evento no publicado o asiento ya ocupado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              examples:
+                evento:
+                  value: {status: 409, mensaje: El evento no esta publicado}
+                asiento:
+                  value: {status: 409, mensaje: El asiento ya no esta disponible}
+        '422':
+          description: Supera el límite configurado de entradas o el sector no tiene precio.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 422, mensaje: 'El sector SEC-CAMPO no tiene precio en este evento'}
+        '503':
+          description: eventos-service no responde.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 503, mensaje: eventos-service no responde}
+  /api/compras/{id}/confirmar-pago:
+    parameters:
+      - $ref: '#/components/parameters/IdOrden'
+    post:
+      tags: [Compras]
+      summary: Confirmar pago y completar compra
+      description: Procesa el pago y emite entradas. Si la confirmación se reintenta tras completar la compra, devuelve el resultado existente.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConfirmarPagoRequest'}
+            example: {metodoPago: TARJETA}
+      responses:
+        '200':
+          description: Estado final o actual de la confirmación.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConfirmacionPagoResponse'}
+              example:
+                ordenId: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+                estado: COMPLETADA
+                transaccionPagoId: 5ac1e64c-648f-4b68-8d53-e0cfdc78e911
+                montoTotal: 30000.00
+                metodoPago: TARJETA
+                entradas: []
+                mensaje: Compra completada exitosamente
+        '402':
+          description: Pago rechazado; la orden queda cancelada y se liberan los asientos/cupos.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 402, mensaje: 'El pago fue rechazado: fondos insuficientes'}
+        '400':
+          description: El parámetro id no es un UUID válido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '404':
+          description: Orden inexistente; se devuelve error de negocio.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 404, mensaje: La orden indicada no existe}
+        '409':
+          description: La reserva venció, ya se procesa en paralelo o no admite confirmación desde su estado actual.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 409, mensaje: La reserva temporal ha expirado y los asientos han sido liberados}
+        '500':
+          description: Fallo técnico al comunicarse con la pasarela u otro servicio dependiente.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/compras/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdOrden'
+    get:
+      tags: [Compras]
+      summary: Consultar orden
+      description: Devuelve el estado actual de la orden y, si el pago fue confirmado, las entradas emitidas.
+      responses:
+        '200':
+          description: Orden encontrada.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConfirmacionPagoResponse'}
+              example:
+                ordenId: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+                estado: COMPLETADA
+                transaccionPagoId: 5ac1e64c-648f-4b68-8d53-e0cfdc78e911
+                montoTotal: 30000
+                metodoPago: TARJETA
+                entradas: []
+                mensaje: 'Estado actual de la orden: COMPLETADA'
+        '404':
+          description: No existe una orden con ese UUID.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NegocioError'}
+              example: {status: 404, mensaje: La orden indicada no existe}
+  /api/compras/asientos/liberar:
+    post:
+      tags: [Compras]
+      summary: Liberar asiento (interno)
+      description: Elimina el bloqueo identificado por evento, sector, fila y asiento. Es invocado por entradas-service al aprobar devoluciones o cancelar entradas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LiberarAsientoRequest'}
+            example: {eventoId: 65c113ab8e1d5d330948e002, sectorId: SEC-PLATEA-A, fila: '1', asiento: 1}
+      responses:
+        '200':
+          description: Solicitud procesada (sin cuerpo); puede no haber un bloqueo coincidente.
+        '400':
+          description: Cuerpo JSON inválido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/entradas/emitir:
+    post:
+      tags: [Entradas]
+      summary: Emitir entradas (interno)
+      description: Emite una entrada por cada asiento indicado. Repetir la solicitud para una orden ya emitida devuelve las entradas existentes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EmisionEntradasRequest'}
+            example:
+              ordenCompraId: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+              clienteId: CLI-1234
+              eventoId: 65c113ab8e1d5d330948e002
+              asientos: [{sectorNombre: Platea Preferencial, fila: '1', asiento: 1}]
+      responses:
+        '201':
+          description: Entradas emitidas o recuperadas por idempotencia.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EmisionEntradasResponse'}
+              example:
+                ordenCompraId: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+                entradas:
+                  - id: 2e230f17-39b3-4418-8e39-c5d4f1469d28
+                    ordenCompraId: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+                    clienteId: CLI-1234
+                    eventoId: 65c113ab8e1d5d330948e002
+                    sectorNombre: Platea Preferencial
+                    fila: '1'
+                    asiento: 1
+                    codigoQrHash: '53c70a7d0ef3...'
+                    estado: EMITIDA
+                    fechaEmision: '2027-12-01T12:00:00'
+        '400':
+          description: Cuerpo inválido o faltan propiedades requeridas por la lógica de emisión.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/entradas/orden/{ordenCompraId}:
+    get:
+      tags: [Entradas]
+      summary: Listar entradas de una orden
+      parameters:
+        - name: ordenCompraId
+          in: path
+          required: true
+          description: ID de la orden devuelto por compras-service.
+          schema: {type: string}
+          example: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+      responses:
+        '200':
+          description: Entradas asociadas a la orden (puede estar vacía).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Entrada'}
+              example: []
+  /api/entradas/cliente/{clienteId}:
+    get:
+      tags: [Entradas]
+      summary: Listar entradas de un cliente
+      parameters:
+        - name: clienteId
+          in: path
+          required: true
+          schema: {type: string}
+          example: CLI-1234
+      responses:
+        '200':
+          description: Entradas asociadas al cliente (puede estar vacía).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Entrada'}
+              example: []
+  /api/entradas/{id}/devolucion:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: UUID de la entrada.
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Entradas]
+      summary: Solicitar devolución
+      description: El cliente debe ser propietario de la entrada, esta debe estar EMITIDA y deben faltar al menos 72 horas para el evento.
+      parameters:
+        - name: clienteId
+          in: query
+          required: true
+          schema: {type: string}
+          example: CLI-1234
+        - name: motivo
+          in: query
+          required: false
+          schema: {type: string}
+          example: No podré asistir
+      responses:
+        '201':
+          description: Solicitud de devolución creada como PENDIENTE.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SolicitudDevolucion'}
+              example:
+                id: 0c3018c6-50b3-4f71-bb28-1dd54bdf30ac
+                entradaId: 2e230f17-39b3-4418-8e39-c5d4f1469d28
+                clienteId: CLI-1234
+                motivo: No podré asistir
+                estado: PENDIENTE
+                fechaSolicitud: '2027-12-01T12:00:00'
+        '400':
+          description: Entrada no emitida o solicitud dentro de las 72 horas previas al evento.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example: {status: 400, error: La entrada no puede devolverse bajo las reglas vigentes}
+        '403':
+          description: La entrada no pertenece al cliente indicado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example: {status: 403, error: La entrada no pertenece al cliente solicitante}
+        '404':
+          description: Solicitud o entrada asociada no encontrada.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '409':
+          description: Ya existe una solicitud pendiente para la entrada.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example: {status: 409, error: Ya existe una solicitud de devolución en trámite}
+  /api/entradas/devoluciones/{solicitudId}/aprobar:
+    parameters:
+      - name: solicitudId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Entradas]
+      summary: Aprobar devolución (administrativo)
+      description: Marca la entrada como cancelada, intenta liberar el asiento y simula el reintegro.
+      parameters:
+        - name: observacion
+          in: query
+          required: false
+          description: Texto de resolución; valor predeterminado Aprobada.
+          schema: {type: string, default: Aprobada}
+          example: Aprobada
+      responses:
+        '200':
+          description: Solicitud aprobada (sin cuerpo).
+        '400':
+          description: La solicitud ya fue procesada.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/entradas/eventos/{eventoId}/cancelar:
+    parameters:
+      - name: eventoId
+        in: path
+        required: true
+        description: ID del evento cancelado.
+        schema: {type: string}
+    post:
+      tags: [Entradas]
+      summary: Cancelar entradas de un evento (interno)
+      description: Cancela todas las entradas activas del evento e intenta liberar sus asientos.
+      responses:
+        '200':
+          description: Resultado de la cancelación masiva.
+          content:
+            text/plain:
+              schema: {type: string}
+              example: Se cancelaron 2 entradas y se liberaron sus asientos
+  /api/pagos/procesar:
+    post:
+      tags: [Pagos]
+      summary: Procesar pago simulado
+      description: Devuelve APROBADO o RECHAZADO. Para probar errores, metodoPago que contenga ERROR o TIMEOUT produce 500; RECHAZ, FONDOS, DENEGA, INVALIDA o VENCIDA simula rechazo con HTTP 200.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PagoRequest'}
+            examples:
+              aprobado:
+                value: {monto: 30000, ordenId: 9d08c95a-872e-4f3a-a004-f02d3d60c688, metodoPago: TARJETA}
+              rechazado:
+                value: {monto: 30000, ordenId: 9d08c95a-872e-4f3a-a004-f02d3d60c688, metodoPago: FONDOS}
+      responses:
+        '200':
+          description: Resultado de la simulación, incluido el rechazo del pago.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PagoResponse'}
+              examples:
+                aprobado:
+                  value: {transaccionId: 5ac1e64c-648f-4b68-8d53-e0cfdc78e911, estado: APROBADO, mensaje: Pago aprobado exitosamente}
+                rechazado:
+                  value: {transaccionId: 5ac1e64c-648f-4b68-8d53-e0cfdc78e911, estado: RECHAZADO, mensaje: Pago rechazado por fondos insuficientes}
+        '500':
+          description: Fallo técnico simulado cuando el método contiene ERROR o TIMEOUT.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/pagos/reembolsar:
+    post:
+      tags: [Pagos]
+      summary: Simular reembolso
+      description: Requiere transaccionId y monto mayor a cero para devolver REEMBOLSADO. Las solicitudes inválidas devuelven HTTP 200 con estado RECHAZADO. Nota de integración: entradas-service actualmente envía ordenId y clienteId, por lo que esa llamada automática no satisface este contrato y produce rechazo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReembolsoRequest'}
+            example: {transaccionId: 5ac1e64c-648f-4b68-8d53-e0cfdc78e911, monto: 30000}
+      responses:
+        '200':
+          description: Resultado del reembolso simulado.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReembolsoResponse'}
+              examples:
+                aprobado:
+                  value: {reembolsoId: 0b916699-c9f9-4888-8209-9018f025cc5d, estado: REEMBOLSADO, mensaje: Reintegro procesado exitosamente a la cuenta de origen}
+                rechazado:
+                  value: {reembolsoId: 0b916699-c9f9-4888-8209-9018f025cc5d, estado: RECHAZADO, mensaje: Reembolso rechazado: monto inválido}
+        '400':
+          description: JSON inválido.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+components:
+  parameters:
+    IdDocumento:
+      name: id
+      in: path
+      required: true
+      description: Identificador del documento MongoDB.
+      schema: {type: string}
+      example: 65c112ab8e1d5d330948e001
+    IdOrden:
+      name: id
+      in: path
+      required: true
+      description: UUID de la orden de compra.
+      schema: {type: string, format: uuid}
+      example: 9d08c95a-872e-4f3a-a004-f02d3d60c688
+  responses:
+    NotFound:
+      description: Recurso no encontrado.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {type: about:blank, title: Not Found, status: 404, detail: Recurso no encontrado}
+    NotFoundEmpty:
+      description: Recurso no encontrado. Este controlador devuelve el estado 404 sin cuerpo.
+  schemas:
+    Error:
+      type: object
+      description: Cuerpo de error estándar de Spring; puede variar según el servicio y el tipo de error.
+      properties:
+        timestamp: {type: string, format: date-time}
+        status: {type: integer, example: 404}
+        error: {type: string, example: Not Found}
+        title: {type: string, example: Not Found}
+        message: {type: string, example: Recurso no encontrado}
+        detail: {type: string, example: Recurso no encontrado}
+        type: {type: string, example: about:blank}
+        instance: {type: string, example: /api/eventos/123}
+        path: {type: string, example: /api/eventos/123}
+        mensaje: {type: string, example: Recurso no encontrado}
+    MensajeError:
+      type: object
+      properties:
+        mensaje: {type: string}
+      required: [mensaje]
+    NegocioError:
+      type: object
+      properties:
+        status: {type: integer, example: 409}
+        mensaje: {type: string, example: El evento no esta publicado}
+      required: [status, mensaje]
+    Ubicacion:
+      type: object
+      properties:
+        latitud: {type: number, format: double, example: -34.9011}
+        longitud: {type: number, format: double, example: -56.1645}
+      required: [latitud, longitud]
+    FilaSector:
+      type: object
+      properties:
+        fila: {type: string, example: '1'}
+        asientos:
+          type: array
+          items: {type: integer}
+          example: [1, 2, 3, 4]
+      required: [fila, asientos]
+    Sector:
+      type: object
+      properties:
+        sectorId: {type: string, example: SEC-PLATEA-A}
+        nombre: {type: string, example: Platea Preferencial}
+        tipo: {type: string, enum: [NUMERADO, CAPACIDAD_GENERAL]}
+        capacidadMaxima: {type: integer, nullable: true, example: 5000}
+        filas:
+          type: array
+          nullable: true
+          items: {$ref: '#/components/schemas/FilaSector'}
+      required: [tipo]
+    LugarInput:
+      type: object
+      properties:
+        nombre: {type: string, example: Estadio TicketYa}
+        direccion: {type: string, example: Av. Principal 123}
+        ciudad: {type: string, example: Montevideo}
+        ubicacion: {$ref: '#/components/schemas/Ubicacion'}
+        sectores:
+          type: array
+          items: {$ref: '#/components/schemas/Sector'}
+      required: [nombre]
+    Lugar:
+      allOf:
+        - {$ref: '#/components/schemas/LugarInput'}
+        - type: object
+          properties:
+            id: {type: string, description: MongoDB document ID, example: 65c112ab8e1d5d330948e001}
+    PrecioSector:
+      type: object
+      properties:
+        idSector: {type: string, example: SEC-CAMPO}
+        precio: {type: number, format: double, minimum: 0, example: 15000}
+    SectorResumen:
+      type: object
+      properties:
+        sectorId: {type: string}
+        nombre: {type: string}
+        tipo: {type: string, enum: [NUMERADO, CAPACIDAD_GENERAL]}
+        capacidadMaxima: {type: integer, nullable: true}
+    EventoInput:
+      type: object
+      properties:
+        nombre: {type: string}
+        descripcion: {type: string}
+        tipoEvento: {type: string, enum: [RECITAL, TEATRO, DEPORTE, CONFERENCIA]}
+        organizadorId: {type: string}
+        participantes:
+          type: array
+          items: {type: string}
+        fechaHora: {type: string, example: '2027-12-15T21:00:00'}
+        lugarId: {type: string}
+        ciudad: {type: string}
+        preciosSectores:
+          type: array
+          items: {$ref: '#/components/schemas/PrecioSector'}
+    Evento:
+      allOf:
+        - {$ref: '#/components/schemas/EventoInput'}
+        - type: object
+          properties:
+            id: {type: string, example: 65c113ab8e1d5d330948e002}
+            estado: {type: string, enum: [BORRADOR, PUBLICADO, AGOTADO, CANCELADO, FINALIZADO]}
+            sectores:
+              type: array
+              items: {$ref: '#/components/schemas/SectorResumen'}
+    ReservaItem:
+      type: object
+      properties:
+        sectorId: {type: string, example: SEC-PLATEA-A}
+        fila: {type: string, nullable: true, example: '1'}
+        asiento: {type: integer, nullable: true, example: 1}
+      required: [sectorId]
+    ReservaRequest:
+      type: object
+      properties:
+        clienteId: {type: string, example: CLI-1234}
+        eventoId: {type: string, example: 65c113ab8e1d5d330948e002}
+        items:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/ReservaItem'}
+      required: [clienteId, eventoId, items]
+    ReservaResponse:
+      type: object
+      properties:
+        ordenId: {type: string, format: uuid}
+        estado: {type: string, enum: [RESERVADA_TEMPORAL, PROCESANDO_PAGO, PAGO_CONFIRMADO, COMPLETADA, EXPIRADA, CANCELADA]}
+        expiraEn: {type: string, example: '2027-12-15T21:10:00'}
+        montoTotal: {type: number, format: double, example: 30000}
+        segundosRestantes: {type: integer, format: int64, example: 600}
+    ConfirmarPagoRequest:
+      type: object
+      properties:
+        metodoPago: {type: string, example: TARJETA}
+    Entrada:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        ordenCompraId: {type: string}
+        clienteId: {type: string}
+        eventoId: {type: string}
+        sectorNombre: {type: string}
+        fila: {type: string, nullable: true}
+        asiento: {type: integer, nullable: true}
+        codigoQrHash: {type: string}
+        estado: {type: string, enum: [EMITIDA, USADA, CANCELADA]}
+        fechaEmision: {type: string, example: '2027-12-01T12:00:00'}
+    ConfirmacionPagoResponse:
+      type: object
+      properties:
+        ordenId: {type: string, format: uuid}
+        estado: {type: string, enum: [RESERVADA_TEMPORAL, PROCESANDO_PAGO, PAGO_CONFIRMADO, COMPLETADA, EXPIRADA, CANCELADA]}
+        transaccionPagoId: {type: string, nullable: true}
+        montoTotal: {type: number, format: double, nullable: true}
+        metodoPago: {type: string, nullable: true}
+        entradas:
+          type: array
+          items: {$ref: '#/components/schemas/Entrada'}
+        mensaje: {type: string}
+    LiberarAsientoRequest:
+      type: object
+      properties:
+        eventoId: {type: string}
+        sectorId: {type: string}
+        fila: {type: string, nullable: true}
+        asiento: {type: integer, nullable: true}
+    EmisionAsiento:
+      type: object
+      properties:
+        sectorNombre: {type: string}
+        fila: {type: string, nullable: true}
+        asiento: {type: integer, nullable: true}
+    EmisionEntradasRequest:
+      type: object
+      properties:
+        ordenCompraId: {type: string}
+        clienteId: {type: string}
+        eventoId: {type: string}
+        asientos:
+          type: array
+          items: {$ref: '#/components/schemas/EmisionAsiento'}
+    EmisionEntradasResponse:
+      type: object
+      properties:
+        ordenCompraId: {type: string}
+        entradas:
+          type: array
+          items: {$ref: '#/components/schemas/Entrada'}
+    SolicitudDevolucion:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        entradaId: {type: string, format: uuid}
+        clienteId: {type: string}
+        motivo: {type: string, nullable: true}
+        estado: {type: string, enum: [PENDIENTE, APROBADA, RECHAZADA]}
+        fechaSolicitud: {type: string, example: '2027-12-01T12:00:00'}
+        fechaResolucion: {type: string, nullable: true, example: '2027-12-01T12:30:00'}
+        respuestaAdmin: {type: string, nullable: true}
+    PagoRequest:
+      type: object
+      properties:
+        monto: {type: number, format: double, example: 30000}
+        ordenId: {type: string}
+        metodoPago: {type: string, example: TARJETA}
+    PagoResponse:
+      type: object
+      properties:
+        transaccionId: {type: string, format: uuid}
+        estado: {type: string, enum: [APROBADO, RECHAZADO]}
+        mensaje: {type: string}
+    ReembolsoRequest:
+      type: object
+      properties:
+        transaccionId: {type: string}
+        monto: {type: number, format: double, example: 30000}
+    ReembolsoResponse:
+      type: object
+      properties:
+        reembolsoId: {type: string, format: uuid}
+        estado: {type: string, enum: [REEMBOLSADO, RECHAZADO]}
+        mensaje: {type: string}
